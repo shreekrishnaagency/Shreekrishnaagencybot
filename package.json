@@ -1,7 +1,7 @@
 {
   "name": "shree-krishna-bot",
   "version": "1.0.0",
-  "description": "Agency Bot Server",
+  "description": "Agency Bot Server (QR Mode)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
