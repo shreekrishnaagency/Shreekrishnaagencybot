@@ -11,8 +11,6 @@ const ADMIN_ID = "5265106993";
 const CREATOR_CHANNEL_ID = "-1003501885141"; 
 const PUBLIC_CHANNEL_ID = "@shreekrishnaIMA"; 
 
-const BACKUP_QR_LINK = "https://shreekrishnaagency.github.io/Business/qr.jpg";
-
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const CHANNEL_LINK = "https://t.me/shreekrishnaIMA";
 const WEBSITE_LINK = "https://shreekrishnaagency.github.io/Business/";
@@ -24,6 +22,10 @@ let allUsers = new Set();
 let adminStatus = "ONLINE"; 
 let ADMIN_QR_ID = null; 
 
+// TRACKING DATABASE
+let orderDB = {};        
+let userLatestOrder = {}; 
+
 const RATES = {
   "Instagram": { "Followers": 200, "Likes": 70, "Views": 80 },
   "YouTube":    { "Views": 150, "Likes": 140, "Subs": 2580 },
@@ -33,19 +35,44 @@ const RATES = {
 };
 
 // ================= 3. SERVER ROUTES =================
-app.get('/', (req, res) => { res.send("🚀 Server Live: Profile Link & Verification Fixed!"); });
+app.get('/', (req, res) => { res.send("🚀 Server Live: Instant Order Creation!"); });
 
 app.post('/webhook', async (req, res) => {
     const data = req.body;
     try {
+        // 1. CHANNEL WELCOME
+        if (data.chat_member) {
+            const update = data.chat_member;
+            if (update.chat.username === "shreekrishnaIMA" || update.chat.id.toString() === PUBLIC_CHANNEL_ID) {
+                if (update.new_chat_member.status === "member") {
+                    const userName = update.new_chat_member.user.first_name;
+                    const sent = await axios.post(`${TELEGRAM_API}/sendMessage`, {
+                        chat_id: update.chat.id,
+                        text: `👋 **Welcome ${userName} to Shree Krishna Agency!**\n\n🚀 Best SMM Services.\n👇 **Start Here:**\n@ShreeKrishnaAgencyBot`,
+                        parse_mode: "Markdown"
+                    });
+                    if (sent.data.ok) {
+                        setTimeout(() => {
+                            axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: update.chat.id, message_id: sent.data.result.message_id }).catch(e=>{});
+                        }, 60000); 
+                    }
+                }
+            }
+            return res.send({ status: "ok" });
+        }
+
+        // 2. WEBSITE FORM
         if (data.source === "website_join") {
             const msg = `📝 **NEW CREATOR APPLICATION**\n➖➖➖➖➖➖➖➖➖➖\n👤 **Name:** ${data.name}\n📞 **Phone:** [Click to Chat](https://wa.me/${data.phone})\n🔗 **Link:** ${data.link}\n👥 **Followers:** ${data.subs}\n💰 **Price:** ₹${data.price}\n💳 **Payment:** ${data.payment_id || "N/A"}\n➖➖➖➖➖➖➖➖➖➖`;
             await sendMessage(CREATOR_CHANNEL_ID, msg);
             await sendMessage(ADMIN_ID, `🔔 **New Creator Application!**`);
             return res.send({ status: "success" });
         }
+
+        // 3. BOT HANDLER
         if (data.callback_query) await handleCallback(data.callback_query);
         else if (data.message) await handleMessage(data.message);
+
     } catch (e) { console.error("Error:", e.message); }
     res.send({ status: "ok" });
 });
@@ -59,18 +86,25 @@ async function handleCallback(cb) {
 
     if (data === "start") { delete userState[chatId]; await sendMainMenu(chatId, msgId); }
     
+    // 🔥 TALK TO FOUNDER (With Profile Link)
     else if (data === "talk_founder") {
-        // 🔥 Profile Link added for Admin
         const userLink = `[${cb.from.first_name}](tg://user?id=${chatId})`;
-        await sendMessage(ADMIN_ID, `🗣️ **CHAT REQUEST**\n👤 User: ${userLink}\n🆔 ID: \`${chatId}\`\n🔗 Username: @${cb.from.username || "NoUsername"}`);
+        const username = cb.from.username ? `@${cb.from.username}` : "No Username";
+        
+        await sendMessage(ADMIN_ID, `🗣️ **CHAT REQUEST**\n➖➖➖➖➖➖➖➖\n👤 **User:** ${userLink}\n🆔 **ID:** \`${chatId}\`\n🔗 **Handle:** ${username}\n➖➖➖➖➖➖➖➖\nUser wants to talk.`);
+        
         await editMessage(chatId, msgId, "✅ **Request Sent!**\nThe Founder will message you shortly.", [[{text: "🔙 Back", callback_data: "start"}]]);
     }
-    // ... (Other buttons remain same) ...
+
+    else if (data === "track") {
+        userState[chatId] = "TRACKING"; 
+        await editMessage(chatId, msgId, "🔎 **Track Order**\n\n👇 Please enter your **Order ID** below:\n(Example: `ORD-12345`)", [[{text: "🔙 Back", callback_data: "start"}]]);
+    }
+    // ... Other buttons ...
     else if (data === "ai") {
         let st = (adminStatus === "ONLINE") ? "🟢 **Online**" : "🔴 **Offline**";
         await editMessage(chatId, msgId, `🤖 **AI Support Status:** ${st}\n\nFor urgent queries, use 'Talk to Founder'.`, [[{text: "🗣️ Talk to Founder", callback_data: "talk_founder"}, {text: "🔙 Back", callback_data: "start"}]]);
     }
-    else if (data === "track") await editMessage(chatId, msgId, "🔎 **Track Order**\n\nPlease send your **Order ID** here.", [[{text: "🔙 Back", callback_data: "start"}]]);
     else if (data === "why") await editMessage(chatId, msgId, "🌟 **Why Choose Us?**\n\n🚀 Super Fast Delivery\n🛡️ 100% Secure\n💎 Best Market Rates", [[{text: "🔙 Back", callback_data: "start"}]]);
     else if (data === "terms") await editMessage(chatId, msgId, "⚖️ **Terms:**\n\n✅ Non-Drop Guaranteed\n🚫 No Refunds for Wrong Links", [[{text: "🔙 Back", callback_data: "start"}]]);
 
@@ -114,19 +148,51 @@ async function handleMessage(msg) {
             ADMIN_QR_ID = msg.photo[msg.photo.length - 1].file_id;
             await sendMessage(chatId, "✅ **New QR Code Set!**"); return;
         }
+        
+        // 🔥 ADMIN REPLY (With Cancel)
+        if (text.startsWith("/reply ")) {
+            let parts = text.split(" ");
+            let uid = parts[1];
+            let potentialOid = parts[2];
+            let keyword = "";
+            let targetOid = null;
+
+            if (potentialOid && potentialOid.startsWith("ORD-")) {
+                targetOid = potentialOid;
+                keyword = parts.slice(3).join(" ").trim();
+            } else {
+                targetOid = userLatestOrder[uid] || "Unknown";
+                keyword = parts.slice(2).join(" ").trim();
+            }
+
+            const SHORTCUTS = {
+                "rec": "✅ **Order Received!**\nPayment verified. We will start shortly.",
+                "start": "🚀 **Order Started!**\nWork is in progress.",
+                "done": "🎉 **Order Completed!**\nThank you for your business!",
+                "cancel": "❌ **Order Cancelled!**\nPayment not received or invalid details."
+            };
+
+            let statusUpdated = false;
+            if (targetOid !== "Unknown") {
+                if(keyword === "rec") { orderDB[targetOid] = "Received 🟢"; statusUpdated = true; }
+                if(keyword === "start") { orderDB[targetOid] = "In Progress 🚀"; statusUpdated = true; }
+                if(keyword === "done") { orderDB[targetOid] = "Completed ✅"; statusUpdated = true; }
+                if(keyword === "cancel") { delete orderDB[targetOid]; statusUpdated = true; }
+            }
+
+            let customMsg = SHORTCUTS[keyword.toLowerCase()] || keyword;
+            await sendMessage(uid, `📩 **Admin Update:**\n🆔 Order: \`${targetOid}\`\n\n${customMsg}`);
+            
+            if (keyword === "cancel") await sendMessage(chatId, `🚫 **Cancelled & Deleted:** ${targetOid}`);
+            else await sendMessage(chatId, `✅ **Reply Sent!**`);
+            return;
+        }
         if (text === "/online") { adminStatus = "ONLINE"; await sendMessage(chatId, "🟢 **ONLINE**"); return; }
         if (text === "/offline") { adminStatus = "OFFLINE"; await sendMessage(chatId, "🔴 **OFFLINE**"); return; }
         if (text.startsWith("/broadcast ")) {
             let bMsg = text.replace("/broadcast ", "");
             for(let uid of allUsers) await sendMessage(uid, `📢 **ANNOUNCEMENT**\n\n${bMsg}`);
             await sendMessage(chatId, "✅ Broadcast Sent!"); return;
-        }
-        if (text.startsWith("/reply ")) {
-            let parts = text.split(" ");
-            let uid = parts[1];
-            let rMsg = parts.slice(2).join(" ");
-            await sendMessage(uid, `📩 **Admin Reply:**\n${rMsg}`);
-            await sendMessage(chatId, "✅ Reply Sent!"); return;
         }
         if (text.startsWith("/post ")) {
             await sendMessage(PUBLIC_CHANNEL_ID, text.replace("/post ", ""));
@@ -135,79 +201,117 @@ async function handleMessage(msg) {
     }
 
     if (text === "/start") { delete userState[chatId]; await sendMainMenu(chatId); return; }
-    if (text === "/myid") { await sendMessage(chatId, `🆔 Your ID: \`${chatId}\``); return; }
 
-    // --- USER INPUTS ---
+    // --- USER FLOW ---
     if (userState[chatId]) {
         const state = userState[chatId];
-        
-        // 1. QUANTITY ENTERED
+
+        if (state === "TRACKING") {
+            let status = orderDB[text.trim()];
+            if (status) await sendMessage(chatId, `🔎 **Order Status:**\n🆔 ID: \`${text.trim()}\`\n📊 Status: **${status}**`);
+            else await sendMessage(chatId, `⚠️ **Order Not Found!**`);
+            delete userState[chatId];
+            return;
+        }
+
+        // 1. QUANTITY
         if (state.startsWith("QTY_")) {
             let qty = parseInt(text);
             if (isNaN(qty) || qty < 10) { await sendMessage(chatId, "⚠️ Invalid Number (Min 10)"); return; }
             
             let d = state.replace("QTY_", "").split("|");
             let price = ((RATES[d[0]][d[1]] / 1000) * qty).toFixed(2);
-            userState[chatId] = `LINK_${d[0]}|${d[1]}|${qty}|${price}`;
-            
-            const caption = `📊 **Order Summary**\n` +
-                            `➖➖➖➖➖➖➖➖\n` +
-                            `🛠 **Service:** ${d[1]}\n` +
-                            `🔢 **Quantity:** ${qty}\n` +
-                            `💰 **Total Amount:** ₹${price}\n` +
-                            `➖➖➖➖➖➖➖➖\n\n` +
-                            `📸 **Scan QR to Pay Now**\n` +
-                            `✅ Payment ke baad **Link** ya **Screenshot** bhejein.`;
-
-            if (ADMIN_QR_ID) await sendPhoto(chatId, ADMIN_QR_ID, caption);
-            else await sendPhoto(chatId, BACKUP_QR_LINK, caption);
+            userState[chatId] = `WAITLINK_${d[0]}|${d[1]}|${qty}|${price}`;
+            await sendMessage(chatId, `✅ **Quantity Accepted:** ${qty}\n💰 **Total Amount:** ₹${price}\n\n🔗 **Now Please Send your Profile/Post Link:**`);
         }
         
-        // 2. LINK / SCREENSHOT ENTERED
-        else if (state.startsWith("LINK_")) {
-            let d = state.replace("LINK_", "").split("|");
-            let oid = "ORD-" + Math.floor(10000 + Math.random() * 90000);
+        // 2. LINK -> CREATE ORDER & NOTIFY ADMIN -> THEN ASK QR
+        else if (state.startsWith("WAITLINK_")) {
+            if (!text.toLowerCase().includes("http") && !text.toLowerCase().includes("www")) {
+                await sendMessage(chatId, "⚠️ **Invalid Link!**\nPlease send a valid URL starting with `http` or `www`.");
+                return;
+            }
+
+            let d = state.replace("WAITLINK_", "").split("|");
+            // d = [Platform, Service, Qty, Price]
             
-            // 🔥 User Details for Admin
+            // 🔥 GENERATE ID NOW
+            let oid = "ORD-" + Math.floor(10000 + Math.random() * 90000);
+            orderDB[oid] = "Pending Payment 🟡";
+            userLatestOrder[chatId] = oid;
+
+            // 🔥 SEND FULL DETAILS TO ADMIN (IMMEDIATELY)
             const userLink = `[${msg.from.first_name}](tg://user?id=${chatId})`;
             const username = msg.from.username ? `@${msg.from.username}` : "No Username";
 
-            // A. AGAR PHOTO HAI (Screenshot)
-            if (msg.photo) {
-                let photoId = msg.photo[msg.photo.length - 1].file_id;
-                let cap = msg.caption ? msg.caption : "No Link Provided";
-                
-                await sendPhoto(ADMIN_ID, photoId, `🚀 **NEW ORDER (Screenshot)**\n🆔 **ID:** \`${oid}\`\n👤 **User:** ${userLink}\n🔗 **Handle:** ${username}\n📦 **Service:** ${d[1]}\n💰 **Price:** ₹${d[3]}\n📝 **Note:** ${cap}`);
-                
-                await sendMessage(chatId, `✅ **Order Received!**\n🆔 ID: \`${oid}\`\nAdmin will verify payment shortly.`);
-                delete userState[chatId];
-            }
-            // B. AGAR TEXT HAI (Link Verification Added)
-            else {
-                // 🛑 VERIFICATION: Check for http or www
-                if (!text.toLowerCase().includes("http") && !text.toLowerCase().includes("www")) {
-                    await sendMessage(chatId, "⚠️ **Invalid Link!**\nPlease send a valid URL (starting with `http` or `www`).");
-                    return; // Stop here, don't delete state
-                }
+            await sendMessage(ADMIN_ID, 
+                `🚀 **NEW ORDER (Pending Payment)**\n` +
+                `➖➖➖➖➖➖➖➖\n` +
+                `🆔 **ID:** \`${oid}\`\n` +
+                `👤 **User:** ${userLink} (\`${chatId}\`)\n` +
+                `🔗 **Handle:** ${username}\n` +
+                `📦 **Service:** ${d[1]} (${d[0]})\n` +
+                `🔢 **Qty:** ${d[2]}\n` +
+                `💰 **Price:** ₹${d[3]}\n` +
+                `🔗 **Link:** ${text}\n` +
+                `➖➖➖➖➖➖➖➖\n` +
+                `⚠️ *Waiting for Screenshot...*`
+            );
 
-                await sendMessage(ADMIN_ID, `🚀 **NEW ORDER (Link)**\n🆔 **ID:** \`${oid}\`\n👤 **User:** ${userLink}\n🔗 **Handle:** ${username}\n📦 **Service:** ${d[1]}\n💰 **Price:** ₹${d[3]}\n🔗 **Link:** ${text}`);
-                
-                await sendMessage(chatId, `✅ **Order Received!**\n🆔 ID: \`${oid}\`\nAdmin will start your order shortly.`);
-                delete userState[chatId];
-            }
+            // 🔥 SAVE STATE WITH OID
+            userState[chatId] = `WAITSCR_${d[0]}|${d[1]}|${d[2]}|${d[3]}|${text}|${oid}`;
+
+            const caption = `💰 **Order Created!** (ID: \`${oid}\`)\n` +
+                            `➖➖➖➖➖➖➖➖\n` +
+                            `📦 **Service:** ${d[1]}\n` +
+                            `🔗 **Link:** ${text}\n` +
+                            `💵 **Amount to Pay:** ₹${d[3]}\n` +
+                            `➖➖➖➖➖➖➖➖\n\n` +
+                            `📸 **Scan QR & Send Screenshot**\n` +
+                            `Please send payment screenshot to confirm.`;
+
+            if (ADMIN_QR_ID) await sendPhoto(chatId, ADMIN_QR_ID, caption);
+            else await sendMessage(chatId, "⚠️ **Admin Error:** QR Code missing. Contact Support.");
         }
-        
-        // 3. PROJECT REQUEST
+
+        // 3. SCREENSHOT -> NOTIFY ADMIN OF PROOF
+        else if (state.startsWith("WAITSCR_")) {
+            if (!msg.photo) {
+                await sendMessage(chatId, "⚠️ **Photo Required!**\nPlease send the payment **Screenshot**.");
+                return;
+            }
+
+            let d = state.replace("WAITSCR_", "").split("|");
+            // d = [Platform, Service, Qty, Price, UserLink, OID]
+            let oid = d[5];
+
+            const userLink = `[${msg.from.first_name}](tg://user?id=${chatId})`;
+            let photoId = msg.photo[msg.photo.length - 1].file_id;
+            let cap = msg.caption ? msg.caption : "Paid";
+
+            // 🔥 SEND PROOF TO ADMIN
+            await sendPhoto(ADMIN_ID, photoId, 
+                `📸 **PAYMENT PROOF RECEIVED**\n` +
+                `➖➖➖➖➖➖➖➖\n` +
+                `🆔 **ID:** \`${oid}\`\n` +
+                `👤 **User:** ${userLink}\n` +
+                `💰 **Amount:** ₹${d[3]}\n` +
+                `📝 **Note:** ${cap}\n` +
+                `➖➖➖➖➖➖➖➖\n` +
+                `✅ Verify & Start Order.`
+            );
+
+            await sendMessage(chatId, `✅ **Payment Received!**\n🆔 ID: \`${oid}\`\nAdmin will verify and start your order shortly.`);
+            delete userState[chatId];
+        }
+
         else if (state.startsWith("PROJ_")) {
             let type = state.replace("PROJ_", "");
             let pid = "PRJ-" + Math.floor(1000 + Math.random() * 9000);
-            
-            // 🔥 User Details
             const userLink = `[${msg.from.first_name}](tg://user?id=${chatId})`;
             const username = msg.from.username ? `@${msg.from.username}` : "No Username";
-
-            await sendMessage(ADMIN_ID, `🌐 **PROJECT REQUEST**\n🆔 **ID:** \`${pid}\`\n👤 **User:** ${userLink}\n🔗 **Handle:** ${username}\n🛠 **Type:** ${type}\n📝 **Msg:** ${text}`);
             
+            await sendMessage(ADMIN_ID, `🌐 **PROJECT REQUEST**\n🆔 **ID:** \`${pid}\`\n👤 **User:** ${userLink}\n🔗 **Handle:** ${username}\n🛠 **Type:** ${type}\n📝 **Msg:** ${text}`);
             await sendMessage(chatId, `✅ **Request Saved!**\n🆔 Project ID: \`${pid}\`\nTeam will contact you.`);
             delete userState[chatId];
         }
@@ -218,15 +322,12 @@ async function handleMessage(msg) {
 async function sendMessage(chatId, text, kb) {
     try { await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: text, parse_mode: "Markdown", reply_markup: kb ? {inline_keyboard: kb} : undefined, disable_web_page_preview: true }); } catch(e){ console.log("SendMsg Error"); }
 }
-
 async function sendPhoto(chatId, photo, caption) {
     try { await axios.post(`${TELEGRAM_API}/sendPhoto`, { chat_id: chatId, photo: photo, caption: caption, parse_mode: "Markdown" }); } catch(e){ console.log("SendPhoto Error"); }
 }
-
 async function editMessage(chatId, msgId, text, kb) {
     try { await axios.post(`${TELEGRAM_API}/editMessageText`, { chat_id: chatId, message_id: msgId, text: text, parse_mode: "Markdown", reply_markup: {inline_keyboard: kb}, disable_web_page_preview: true }); } catch(e){}
 }
-
 async function sendMainMenu(chatId, msgId) {
     const kb = [
         [{text: "💰 Paid Services", callback_data: "paid"}, {text: "🌐 Project Working", callback_data: "project"}],
