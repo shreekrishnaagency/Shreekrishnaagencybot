@@ -1,7 +1,7 @@
 {
-  "name": "shree-krishna-agency-bot",
+  "name": "shree-krishna-bot",
   "version": "1.0.0",
-  "description": "Ultimate Agency Bot",
+  "description": "Agency Bot Server",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
