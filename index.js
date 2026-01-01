@@ -8,13 +8,11 @@ app.use(bodyParser.json());
 // ================= 1. CONFIGURATION =================
 const TOKEN = "8506639525:AAGLH2uV4A7BXfyYzBBldXIHWSeIAcBZtG0"; 
 const ADMIN_ID = "5265106993"; 
-const CREATOR_CHANNEL_ID = "-1003501885141"; // Secret Channel
+const CREATOR_CHANNEL_ID = "-1003501885141"; 
 const PUBLIC_CHANNEL_ID = "@shreekrishnaIMA"; 
 
-// BACKUP QR (Jo GitHub par upload kiya hai)
 const BACKUP_QR_LINK = "https://shreekrishnaagency.github.io/Business/qr.jpg";
 
-// LINKS
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const CHANNEL_LINK = "https://t.me/shreekrishnaIMA";
 const WEBSITE_LINK = "https://shreekrishnaagency.github.io/Business/";
@@ -24,7 +22,7 @@ const CREATOR_FORM_LINK = "https://shreekrishnaagency.github.io/Business/join.ht
 let userState = {}; 
 let allUsers = new Set(); 
 let adminStatus = "ONLINE"; 
-let ADMIN_QR_ID = null; // Yahan /setqr wala photo save hoga
+let ADMIN_QR_ID = null; 
 
 const RATES = {
   "Instagram": { "Followers": 200, "Likes": 70, "Views": 80 },
@@ -35,35 +33,19 @@ const RATES = {
 };
 
 // ================= 3. SERVER ROUTES =================
-app.get('/', (req, res) => { res.send("🚀 Server Live: QR Mode Active!"); });
+app.get('/', (req, res) => { res.send("🚀 Server Live: Profile Link & Verification Fixed!"); });
 
 app.post('/webhook', async (req, res) => {
     const data = req.body;
     try {
-        // ➤ WEBSITE DATA HANDLING
         if (data.source === "website_join") {
-            const msg = `📝 **NEW CREATOR APPLICATION**\n` +
-                        `➖➖➖➖➖➖➖➖➖➖\n` +
-                        `👤 **Name:** ${data.name}\n` +
-                        `📞 **Phone:** [Click to Chat](https://wa.me/${data.phone})\n` +
-                        `🔗 **Link:** ${data.link}\n` +
-                        `👥 **Followers:** ${data.subs}\n` +
-                        `💰 **Price:** ₹${data.price}\n` +
-                        `💳 **Payment:** ${data.payment_id || "N/A"}\n` +
-                        `➖➖➖➖➖➖➖➖➖➖`;
-
-            // Send to Secret Channel
+            const msg = `📝 **NEW CREATOR APPLICATION**\n➖➖➖➖➖➖➖➖➖➖\n👤 **Name:** ${data.name}\n📞 **Phone:** [Click to Chat](https://wa.me/${data.phone})\n🔗 **Link:** ${data.link}\n👥 **Followers:** ${data.subs}\n💰 **Price:** ₹${data.price}\n💳 **Payment:** ${data.payment_id || "N/A"}\n➖➖➖➖➖➖➖➖➖➖`;
             await sendMessage(CREATOR_CHANNEL_ID, msg);
-            // Notify Admin
-            await sendMessage(ADMIN_ID, `🔔 **New Creator Application!**\nCheck Secret Channel.`);
-            
+            await sendMessage(ADMIN_ID, `🔔 **New Creator Application!**`);
             return res.send({ status: "success" });
         }
-
-        // ➤ TELEGRAM BOT HANDLING
         if (data.callback_query) await handleCallback(data.callback_query);
         else if (data.message) await handleMessage(data.message);
-
     } catch (e) { console.error("Error:", e.message); }
     res.send({ status: "ok" });
 });
@@ -77,11 +59,13 @@ async function handleCallback(cb) {
 
     if (data === "start") { delete userState[chatId]; await sendMainMenu(chatId, msgId); }
     
-    // SUPPORT & INFO
     else if (data === "talk_founder") {
-        await sendMessage(ADMIN_ID, `🗣️ **CHAT REQ**\nUser: ${cb.from.first_name} (ID: \`${chatId}\`)`);
+        // 🔥 Profile Link added for Admin
+        const userLink = `[${cb.from.first_name}](tg://user?id=${chatId})`;
+        await sendMessage(ADMIN_ID, `🗣️ **CHAT REQUEST**\n👤 User: ${userLink}\n🆔 ID: \`${chatId}\`\n🔗 Username: @${cb.from.username || "NoUsername"}`);
         await editMessage(chatId, msgId, "✅ **Request Sent!**\nThe Founder will message you shortly.", [[{text: "🔙 Back", callback_data: "start"}]]);
     }
+    // ... (Other buttons remain same) ...
     else if (data === "ai") {
         let st = (adminStatus === "ONLINE") ? "🟢 **Online**" : "🔴 **Offline**";
         await editMessage(chatId, msgId, `🤖 **AI Support Status:** ${st}\n\nFor urgent queries, use 'Talk to Founder'.`, [[{text: "🗣️ Talk to Founder", callback_data: "talk_founder"}, {text: "🔙 Back", callback_data: "start"}]]);
@@ -90,7 +74,6 @@ async function handleCallback(cb) {
     else if (data === "why") await editMessage(chatId, msgId, "🌟 **Why Choose Us?**\n\n🚀 Super Fast Delivery\n🛡️ 100% Secure\n💎 Best Market Rates", [[{text: "🔙 Back", callback_data: "start"}]]);
     else if (data === "terms") await editMessage(chatId, msgId, "⚖️ **Terms:**\n\n✅ Non-Drop Guaranteed\n🚫 No Refunds for Wrong Links", [[{text: "🔙 Back", callback_data: "start"}]]);
 
-    // PAID SERVICES
     else if (data === "paid") {
         let kb = []; Object.keys(RATES).forEach(k => kb.push([{text: "🌐 " + k, callback_data: "pl_" + k}]));
         kb.push([{text: "🔙 Back", callback_data: "start"}]);
@@ -109,8 +92,6 @@ async function handleCallback(cb) {
         userState[chatId] = `QTY_${parts[0]}|${parts[1]}`;
         await editMessage(chatId, msgId, `✅ **Selected:** ${parts[1]}\n💰 Rate: ₹${RATES[parts[0]][parts[1]]}/1000\n\n🔢 **Enter Quantity (Min 10):**`, [[{text: "❌ Cancel", callback_data: "start"}]]);
     }
-    
-    // PROJECTS
     else if (data === "project") {
         let kb = [[{text: "🖥️ Website", callback_data: "pr_Web"}, {text: "📹 Vlog", callback_data: "pr_Vlog"}],[{text: "📝 Content", callback_data: "pr_Cont"}, {text: "🤖 Bot", callback_data: "pr_Bot"}],[{text: "🔙 Back", callback_data: "start"}]];
         await editMessage(chatId, msgId, "🛠 **Select Project Type:**", kb);
@@ -129,14 +110,10 @@ async function handleMessage(msg) {
 
     // --- ADMIN COMMANDS ---
     if (chatId.toString() === ADMIN_ID) {
-        
-        // 🔥 SET QR COMMAND
         if (msg.photo && (msg.caption === "/setqr")) {
             ADMIN_QR_ID = msg.photo[msg.photo.length - 1].file_id;
-            await sendMessage(chatId, "✅ **New QR Code Set!**\nUsers will now see this photo.");
-            return;
+            await sendMessage(chatId, "✅ **New QR Code Set!**"); return;
         }
-
         if (text === "/online") { adminStatus = "ONLINE"; await sendMessage(chatId, "🟢 **ONLINE**"); return; }
         if (text === "/offline") { adminStatus = "OFFLINE"; await sendMessage(chatId, "🔴 **OFFLINE**"); return; }
         if (text.startsWith("/broadcast ")) {
@@ -157,7 +134,6 @@ async function handleMessage(msg) {
         }
     }
 
-    // --- USER FLOW ---
     if (text === "/start") { delete userState[chatId]; await sendMainMenu(chatId); return; }
     if (text === "/myid") { await sendMessage(chatId, `🆔 Your ID: \`${chatId}\``); return; }
 
@@ -165,7 +141,7 @@ async function handleMessage(msg) {
     if (userState[chatId]) {
         const state = userState[chatId];
         
-        // 1. QUANTITY ENTERED -> SEND QR CODE
+        // 1. QUANTITY ENTERED
         if (state.startsWith("QTY_")) {
             let qty = parseInt(text);
             if (isNaN(qty) || qty < 10) { await sendMessage(chatId, "⚠️ Invalid Number (Min 10)"); return; }
@@ -181,32 +157,59 @@ async function handleMessage(msg) {
                             `💰 **Total Amount:** ₹${price}\n` +
                             `➖➖➖➖➖➖➖➖\n\n` +
                             `📸 **Scan QR to Pay Now**\n` +
-                            `✅ After payment, please **Send the Link/Screenshot** below.`;
+                            `✅ Payment ke baad **Link** ya **Screenshot** bhejein.`;
 
-            // Send Custom QR or Backup QR
-            if (ADMIN_QR_ID) {
-                await sendPhoto(chatId, ADMIN_QR_ID, caption);
-            } else {
-                await sendPhoto(chatId, BACKUP_QR_LINK, caption);
-            }
+            if (ADMIN_QR_ID) await sendPhoto(chatId, ADMIN_QR_ID, caption);
+            else await sendPhoto(chatId, BACKUP_QR_LINK, caption);
         }
         
-        // 2. LINK ENTERED -> CONFIRM ORDER
+        // 2. LINK / SCREENSHOT ENTERED
         else if (state.startsWith("LINK_")) {
             let d = state.replace("LINK_", "").split("|");
             let oid = "ORD-" + Math.floor(10000 + Math.random() * 90000);
-            delete userState[chatId];
             
-            await sendMessage(ADMIN_ID, `🚀 **NEW PAID ORDER**\n🆔 \`${oid}\`\n👤 ${msg.from.first_name}\n📦 ${d[1]}\n💰 ₹${d[3]}\n🔗 ${text}\n⚠️ *Verify Payment in App*`);
-            await sendMessage(chatId, `✅ **Order Received!**\n🆔 ID: \`${oid}\`\n\nAdmin will verify payment & start shortly.`);
+            // 🔥 User Details for Admin
+            const userLink = `[${msg.from.first_name}](tg://user?id=${chatId})`;
+            const username = msg.from.username ? `@${msg.from.username}` : "No Username";
+
+            // A. AGAR PHOTO HAI (Screenshot)
+            if (msg.photo) {
+                let photoId = msg.photo[msg.photo.length - 1].file_id;
+                let cap = msg.caption ? msg.caption : "No Link Provided";
+                
+                await sendPhoto(ADMIN_ID, photoId, `🚀 **NEW ORDER (Screenshot)**\n🆔 **ID:** \`${oid}\`\n👤 **User:** ${userLink}\n🔗 **Handle:** ${username}\n📦 **Service:** ${d[1]}\n💰 **Price:** ₹${d[3]}\n📝 **Note:** ${cap}`);
+                
+                await sendMessage(chatId, `✅ **Order Received!**\n🆔 ID: \`${oid}\`\nAdmin will verify payment shortly.`);
+                delete userState[chatId];
+            }
+            // B. AGAR TEXT HAI (Link Verification Added)
+            else {
+                // 🛑 VERIFICATION: Check for http or www
+                if (!text.toLowerCase().includes("http") && !text.toLowerCase().includes("www")) {
+                    await sendMessage(chatId, "⚠️ **Invalid Link!**\nPlease send a valid URL (starting with `http` or `www`).");
+                    return; // Stop here, don't delete state
+                }
+
+                await sendMessage(ADMIN_ID, `🚀 **NEW ORDER (Link)**\n🆔 **ID:** \`${oid}\`\n👤 **User:** ${userLink}\n🔗 **Handle:** ${username}\n📦 **Service:** ${d[1]}\n💰 **Price:** ₹${d[3]}\n🔗 **Link:** ${text}`);
+                
+                await sendMessage(chatId, `✅ **Order Received!**\n🆔 ID: \`${oid}\`\nAdmin will start your order shortly.`);
+                delete userState[chatId];
+            }
         }
         
         // 3. PROJECT REQUEST
         else if (state.startsWith("PROJ_")) {
             let type = state.replace("PROJ_", "");
+            let pid = "PRJ-" + Math.floor(1000 + Math.random() * 9000);
+            
+            // 🔥 User Details
+            const userLink = `[${msg.from.first_name}](tg://user?id=${chatId})`;
+            const username = msg.from.username ? `@${msg.from.username}` : "No Username";
+
+            await sendMessage(ADMIN_ID, `🌐 **PROJECT REQUEST**\n🆔 **ID:** \`${pid}\`\n👤 **User:** ${userLink}\n🔗 **Handle:** ${username}\n🛠 **Type:** ${type}\n📝 **Msg:** ${text}`);
+            
+            await sendMessage(chatId, `✅ **Request Saved!**\n🆔 Project ID: \`${pid}\`\nTeam will contact you.`);
             delete userState[chatId];
-            await sendMessage(ADMIN_ID, `🌐 **PROJECT REQUEST**\nType: ${type}\nMsg: ${text}`);
-            await sendMessage(chatId, "✅ **Saved!** Team will contact you.");
         }
     }
 }
@@ -217,7 +220,7 @@ async function sendMessage(chatId, text, kb) {
 }
 
 async function sendPhoto(chatId, photo, caption) {
-    try { await axios.post(`${TELEGRAM_API}/sendPhoto`, { chat_id: chatId, photo: photo, caption: caption, parse_mode: "Markdown" }); } catch(e){ console.log("SendPhoto Error:", e.message); }
+    try { await axios.post(`${TELEGRAM_API}/sendPhoto`, { chat_id: chatId, photo: photo, caption: caption, parse_mode: "Markdown" }); } catch(e){ console.log("SendPhoto Error"); }
 }
 
 async function editMessage(chatId, msgId, text, kb) {
