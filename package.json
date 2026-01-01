@@ -1,7 +1,7 @@
 {
-  "name": "telegram-bot",
+  "name": "shree-krishna-agency-bot",
   "version": "1.0.0",
-  "description": "My Bot Server",
+  "description": "Ultimate Agency Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
