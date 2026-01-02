@@ -5,24 +5,33 @@ const app = express();
 
 app.use(bodyParser.json());
 
-// ================= 1. CONFIGURATION =================
+// ============================================================
+// ⚠️ IMPORTANT: YE IDs APNI REAL IDs SE BADLEIN (MUST CHANGE)
+// ============================================================
+
 const TOKEN = "8506639525:AAGLH2uV4A7BXfyYzBBldXIHWSeIAcBZtG0"; 
+
+// 1. Apni khud ki User ID yahan dalein (Bot ko /myid bhejein mil jayegi)
 const ADMIN_ID = "5265106993"; 
+
+// 2. Apne Secret Creator Channel ki ID yahan dalein (-100 se shuru honi chahiye)
 const CREATOR_CHANNEL_ID = "-1003501885141"; 
+
+// 3. Apne Public Channel ka Username ya ID yahan dalein
 const PUBLIC_CHANNEL_ID = "@shreekrishnaIMA"; 
+
+// ============================================================
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const CHANNEL_LINK = "https://t.me/shreekrishnaIMA";
 const WEBSITE_LINK = "https://shreekrishnaagency.github.io/Business/";
 const CREATOR_FORM_LINK = "https://shreekrishnaagency.github.io/Business/join.html";
 
-// ================= 2. MEMORY & DATA =================
+// DATA STORE
 let userState = {}; 
 let allUsers = new Set(); 
 let adminStatus = "ONLINE"; 
 let ADMIN_QR_ID = null; 
-
-// TRACKING DATABASE
 let orderDB = {};        
 let userLatestOrder = {}; 
 
@@ -34,36 +43,34 @@ const RATES = {
   "Twitter":    { "Followers": 300, "Likes": 100 }
 };
 
-// ================= 3. SERVER ROUTES =================
-app.get('/', (req, res) => { res.send("🚀 Server is Running 100%!"); });
+// SERVER STATUS CHECK
+app.get('/', (req, res) => { res.send("✅ Server is Running Properly!"); });
 
+// WEBHOOK HANDLER
 app.post('/webhook', async (req, res) => {
     const data = req.body;
     
-    // 🛠️ DEBUG LOG (Render Logs mein dikhega agar website se data aaya)
-    if(data.source === "website_join") console.log("📩 New Website Form Received:", data.name);
+    // 🛠️ DEBUG LOGS (Check Render Logs if issues appear)
+    console.log("📨 Data Received:", JSON.stringify(data, null, 2));
 
     try {
         // ➤ 1. CHANNEL WELCOME MESSAGE (Auto Delete)
         if (data.chat_member) {
             const update = data.chat_member;
-            if (update.chat.username === "shreekrishnaIMA" || update.chat.id.toString() === PUBLIC_CHANNEL_ID) {
+            // Check if joining Public Channel
+            if (update.chat.username === PUBLIC_CHANNEL_ID.replace("@","") || update.chat.id.toString() === PUBLIC_CHANNEL_ID) {
                 if (update.new_chat_member.status === "member") {
                     const userName = update.new_chat_member.user.first_name;
-                    const welcomeMsg = `👋 **Welcome ${userName} to Shree Krishna Agency!**\n\n🚀 Best SMM Services at Cheapest Rates.\n👇 **Start Order Here:**\n@ShreeKrishnaAgencyBot`;
-                    
                     const sent = await axios.post(`${TELEGRAM_API}/sendMessage`, {
                         chat_id: update.chat.id,
-                        text: welcomeMsg,
+                        text: `👋 **Welcome ${userName} to Shree Krishna Agency!**\n\n🚀 Best SMM Services.\n👇 **Start Here:**\n@ShreeKrishnaAgencyBot`,
                         parse_mode: "Markdown"
                     });
-
+                    
+                    // Auto Delete after 60s
                     if (sent.data.ok) {
                         setTimeout(() => {
-                            axios.post(`${TELEGRAM_API}/deleteMessage`, {
-                                chat_id: update.chat.id,
-                                message_id: sent.data.result.message_id
-                            }).catch(e => console.log("Delete Error"));
+                            axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: update.chat.id, message_id: sent.data.result.message_id }).catch(e=>{});
                         }, 60000); 
                     }
                 }
@@ -71,27 +78,29 @@ app.post('/webhook', async (req, res) => {
             return res.send({ status: "ok" });
         }
 
-        // ➤ 2. WEBSITE FORM HANDLING
+        // ➤ 2. WEBSITE CREATOR FORM
         if (data.source === "website_join") {
+            console.log("✅ Processing Website Form...");
+            
             const msg = `📝 **NEW CREATOR APPLICATION**\n➖➖➖➖➖➖➖➖➖➖\n👤 **Name:** ${data.name}\n📞 **Phone:** [Click to Chat](https://wa.me/${data.phone})\n🔗 **Link:** ${data.link}\n👥 **Followers:** ${data.subs}\n💰 **Price:** ₹${data.price}\n💳 **Payment:** ${data.payment_id || "N/A"}\n➖➖➖➖➖➖➖➖➖➖`;
             
-            // Send to Secret Channel
+            // Send to Channel
             await sendMessage(CREATOR_CHANNEL_ID, msg);
-            // Notify Admin
-            await sendMessage(ADMIN_ID, `🔔 **New Creator Application Received!**\nCheck your Secret Channel.`);
+            // Send to Admin
+            await sendMessage(ADMIN_ID, `🔔 **New Application Received!**\nCheck Secret Channel.`);
             
             return res.send({ status: "success" });
         }
 
-        // ➤ 3. TELEGRAM BOT HANDLER
+        // ➤ 3. BOT MESSAGES
         if (data.callback_query) await handleCallback(data.callback_query);
         else if (data.message) await handleMessage(data.message);
 
-    } catch (e) { console.error("Error:", e.message); }
+    } catch (e) { console.error("❌ Error in Webhook:", e.message); }
     res.send({ status: "ok" });
 });
 
-// ================= 4. LOGIC HANDLERS =================
+// HANDLERS
 async function handleCallback(cb) {
     const chatId = cb.message.chat.id;
     const msgId = cb.message.message_id;
@@ -100,28 +109,21 @@ async function handleCallback(cb) {
 
     if (data === "start") { delete userState[chatId]; await sendMainMenu(chatId, msgId); }
     
-    // 🔥 TALK TO FOUNDER
+    // Talk to Founder (With Profile Link)
     else if (data === "talk_founder") {
         const userLink = `[${cb.from.first_name}](tg://user?id=${chatId})`;
         const username = cb.from.username ? `@${cb.from.username}` : "No Username";
         await sendMessage(ADMIN_ID, `🗣️ **CHAT REQUEST**\n➖➖➖➖➖➖➖➖\n👤 **User:** ${userLink}\n🆔 **ID:** \`${chatId}\`\n🔗 **Handle:** ${username}\n➖➖➖➖➖➖➖➖\nUser wants to talk.`);
         await editMessage(chatId, msgId, "✅ **Request Sent!**\nThe Founder will message you shortly.", [[{text: "🔙 Back", callback_data: "start"}]]);
     }
-
+    
+    // Tracking
     else if (data === "track") {
         userState[chatId] = "TRACKING"; 
         await editMessage(chatId, msgId, "🔎 **Track Order**\n\n👇 Please enter your **Order ID** below:\n(Example: `ORD-12345`)", [[{text: "🔙 Back", callback_data: "start"}]]);
     }
     
-    // INFO BUTTONS
-    else if (data === "ai") {
-        let st = (adminStatus === "ONLINE") ? "🟢 **Online**" : "🔴 **Offline**";
-        await editMessage(chatId, msgId, `🤖 **AI Support Status:** ${st}\n\nFor urgent queries, use 'Talk to Founder'.`, [[{text: "🗣️ Talk to Founder", callback_data: "talk_founder"}, {text: "🔙 Back", callback_data: "start"}]]);
-    }
-    else if (data === "why") await editMessage(chatId, msgId, "🌟 **Why Choose Us?**\n\n🚀 Super Fast Delivery\n🛡️ 100% Secure\n💎 Best Market Rates", [[{text: "🔙 Back", callback_data: "start"}]]);
-    else if (data === "terms") await editMessage(chatId, msgId, "⚖️ **Terms:**\n\n✅ Non-Drop Guaranteed\n🚫 No Refunds for Wrong Links", [[{text: "🔙 Back", callback_data: "start"}]]);
-
-    // PAID SERVICES
+    // Menu Logic
     else if (data === "paid") {
         let kb = []; Object.keys(RATES).forEach(k => kb.push([{text: "🌐 " + k, callback_data: "pl_" + k}]));
         kb.push([{text: "🔙 Back", callback_data: "start"}]);
@@ -140,8 +142,6 @@ async function handleCallback(cb) {
         userState[chatId] = `QTY_${parts[0]}|${parts[1]}`;
         await editMessage(chatId, msgId, `✅ **Selected:** ${parts[1]}\n💰 Rate: ₹${RATES[parts[0]][parts[1]]}/1000\n\n🔢 **Enter Quantity (Min 10):**`, [[{text: "❌ Cancel", callback_data: "start"}]]);
     }
-    
-    // PROJECTS
     else if (data === "project") {
         let kb = [[{text: "🖥️ Website", callback_data: "pr_Web"}, {text: "📹 Vlog", callback_data: "pr_Vlog"}],[{text: "📝 Content", callback_data: "pr_Cont"}, {text: "🤖 Bot", callback_data: "pr_Bot"}],[{text: "🔙 Back", callback_data: "start"}]];
         await editMessage(chatId, msgId, "🛠 **Select Project Type:**", kb);
@@ -151,6 +151,13 @@ async function handleCallback(cb) {
         userState[chatId] = `PROJ_${type}`;
         await editMessage(chatId, msgId, `✅ **${type}**\n\n📝 **Please type your requirements:**`, [[{text: "❌ Cancel", callback_data: "start"}]]);
     }
+    // Info Buttons
+    else if (data === "ai") {
+        let st = (adminStatus === "ONLINE") ? "🟢 **Online**" : "🔴 **Offline**";
+        await editMessage(chatId, msgId, `🤖 **AI Support Status:** ${st}\n\nFor urgent queries, use 'Talk to Founder'.`, [[{text: "🗣️ Talk to Founder", callback_data: "talk_founder"}, {text: "🔙 Back", callback_data: "start"}]]);
+    }
+    else if (data === "why") await editMessage(chatId, msgId, "🌟 **Why Choose Us?**\n\n🚀 Super Fast Delivery\n🛡️ 100% Secure\n💎 Best Market Rates", [[{text: "🔙 Back", callback_data: "start"}]]);
+    else if (data === "terms") await editMessage(chatId, msgId, "⚖️ **Terms:**\n\n✅ Non-Drop Guaranteed\n🚫 No Refunds for Wrong Links", [[{text: "🔙 Back", callback_data: "start"}]]);
 }
 
 async function handleMessage(msg) {
@@ -161,13 +168,17 @@ async function handleMessage(msg) {
     // --- ADMIN COMMANDS ---
     if (chatId.toString() === ADMIN_ID) {
         
-        // 1. SET QR CODE
-        if (msg.photo && (msg.caption === "/setqr")) {
+        // 1. SET QR (Checks for Photo + Caption)
+        if (msg.photo && msg.caption === "/setqr") {
             ADMIN_QR_ID = msg.photo[msg.photo.length - 1].file_id;
-            await sendMessage(chatId, "✅ **New QR Code Set!**"); return;
+            await sendMessage(chatId, "✅ **New QR Code Set Successfully!**\nNow users will see this QR."); 
+            return;
+        } else if (text === "/setqr") {
+            await sendMessage(chatId, "⚠️ **Wrong Usage!**\nPlease send a **Photo** with caption `/setqr` to set the code.");
+            return;
         }
         
-        // 2. ADMIN REPLY SHORTCUTS
+        // 2. REPLY SYSTEM
         if (text.startsWith("/reply ")) {
             let parts = text.split(" ");
             let uid = parts[1];
@@ -190,12 +201,11 @@ async function handleMessage(msg) {
                 "cancel": "❌ **Order Cancelled!**\nPayment not received or invalid details."
             };
 
-            let statusUpdated = false;
             if (targetOid !== "Unknown") {
-                if(keyword === "rec") { orderDB[targetOid] = "Received 🟢"; statusUpdated = true; }
-                if(keyword === "start") { orderDB[targetOid] = "In Progress 🚀"; statusUpdated = true; }
-                if(keyword === "done") { orderDB[targetOid] = "Completed ✅"; statusUpdated = true; }
-                if(keyword === "cancel") { delete orderDB[targetOid]; statusUpdated = true; }
+                if(keyword === "rec") orderDB[targetOid] = "Received 🟢";
+                if(keyword === "start") orderDB[targetOid] = "In Progress 🚀";
+                if(keyword === "done") orderDB[targetOid] = "Completed ✅";
+                if(keyword === "cancel") delete orderDB[targetOid];
             }
 
             let customMsg = SHORTCUTS[keyword.toLowerCase()] || keyword;
@@ -206,7 +216,7 @@ async function handleMessage(msg) {
             return;
         }
 
-        // 3. OTHER COMMANDS
+        // Other Commands
         if (text === "/online") { adminStatus = "ONLINE"; await sendMessage(chatId, "🟢 **ONLINE**"); return; }
         if (text === "/offline") { adminStatus = "OFFLINE"; await sendMessage(chatId, "🔴 **OFFLINE**"); return; }
         if (text.startsWith("/broadcast ")) {
@@ -235,7 +245,7 @@ async function handleMessage(msg) {
             return;
         }
 
-        // STEP 1: QUANTITY -> ASK LINK
+        // 1. QUANTITY
         if (state.startsWith("QTY_")) {
             let qty = parseInt(text);
             if (isNaN(qty) || qty < 10) { await sendMessage(chatId, "⚠️ Invalid Number (Min 10)"); return; }
@@ -247,7 +257,7 @@ async function handleMessage(msg) {
             await sendMessage(chatId, `✅ **Quantity Accepted:** ${qty}\n💰 **Total Amount:** ₹${price}\n\n🔗 **Now Please Send your Profile/Post Link:**`);
         }
         
-        // STEP 2: LINK -> CREATE ORDER -> NOTIFY ADMIN -> ASK QR
+        // 2. LINK -> CREATE ORDER -> NOTIFY ADMIN -> SEND QR
         else if (state.startsWith("WAITLINK_")) {
             if (!text.toLowerCase().includes("http") && !text.toLowerCase().includes("www")) {
                 await sendMessage(chatId, "⚠️ **Invalid Link!**\nPlease send a valid URL starting with `http` or `www`.");
@@ -261,12 +271,12 @@ async function handleMessage(msg) {
             orderDB[oid] = "Pending Payment 🟡";
             userLatestOrder[chatId] = oid;
 
+            // 🔥 NOTIFY ADMIN INSTANTLY (Link Received)
             const userLink = `[${msg.from.first_name}](tg://user?id=${chatId})`;
             const username = msg.from.username ? `@${msg.from.username}` : "No Username";
 
-            // 🔥 NOTIFY ADMIN IMMEDIATELY
             await sendMessage(ADMIN_ID, 
-                `🚀 **NEW ORDER (Pending Payment)**\n` +
+                `🚀 **NEW ORDER (Payment Pending)**\n` +
                 `➖➖➖➖➖➖➖➖\n` +
                 `🆔 **ID:** \`${oid}\`\n` +
                 `👤 **User:** ${userLink} (\`${chatId}\`)\n` +
@@ -292,10 +302,10 @@ async function handleMessage(msg) {
                             `Please send payment screenshot to confirm.`;
 
             if (ADMIN_QR_ID) await sendPhoto(chatId, ADMIN_QR_ID, caption);
-            else await sendMessage(chatId, "⚠️ **System Message:** Please pay to Admin and send screenshot.");
+            else await sendMessage(chatId, "⚠️ **System Message:** QR Code not updated by Admin.\nPlease ask Admin for UPI.");
         }
 
-        // STEP 3: SCREENSHOT -> SEND PROOF TO ADMIN
+        // 3. SCREENSHOT -> SEND PROOF
         else if (state.startsWith("WAITSCR_")) {
             if (!msg.photo) {
                 await sendMessage(chatId, "⚠️ **Photo Required!**\nPlease send the payment **Screenshot**.");
@@ -303,7 +313,6 @@ async function handleMessage(msg) {
             }
 
             let d = state.replace("WAITSCR_", "").split("|");
-            // d = [Platform, Service, Qty, Price, UserLink, OID]
             let oid = d[5];
 
             const userLink = `[${msg.from.first_name}](tg://user?id=${chatId})`;
@@ -341,10 +350,10 @@ async function handleMessage(msg) {
 
 // ================= 5. HELPERS =================
 async function sendMessage(chatId, text, kb) {
-    try { await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: text, parse_mode: "Markdown", reply_markup: kb ? {inline_keyboard: kb} : undefined, disable_web_page_preview: true }); } catch(e){ console.log("SendMsg Error"); }
+    try { await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: text, parse_mode: "Markdown", reply_markup: kb ? {inline_keyboard: kb} : undefined, disable_web_page_preview: true }); } catch(e){ console.log("SendMsg Error", e.message); }
 }
 async function sendPhoto(chatId, photo, caption) {
-    try { await axios.post(`${TELEGRAM_API}/sendPhoto`, { chat_id: chatId, photo: photo, caption: caption, parse_mode: "Markdown" }); } catch(e){ console.log("SendPhoto Error"); }
+    try { await axios.post(`${TELEGRAM_API}/sendPhoto`, { chat_id: chatId, photo: photo, caption: caption, parse_mode: "Markdown" }); } catch(e){ console.log("SendPhoto Error", e.message); }
 }
 async function editMessage(chatId, msgId, text, kb) {
     try { await axios.post(`${TELEGRAM_API}/editMessageText`, { chat_id: chatId, message_id: msgId, text: text, parse_mode: "Markdown", reply_markup: {inline_keyboard: kb}, disable_web_page_preview: true }); } catch(e){}
